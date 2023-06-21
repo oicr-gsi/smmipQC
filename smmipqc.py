@@ -272,7 +272,7 @@ def set_up_analysis(args):
     newfile.write(mycmd)
     newfile.close()
     link_job_name = 'link.{0}.{1}'.format(args.project, args.run)
-    qsubfile.write('qsub -P gsi -cwd -b y -N {0} -l h_vmem=20g,h_rt=5:0:0 -e {1} -o {1} \"bash {2}\"'.format(link_job_name, logdir, bashscript))
+    qsubfile.write('qsub -P gsi -cwd -b y -N {0} -l h_rt=5:0:0 -e {1} -o {1} \"bash {2}\"'.format(link_job_name, logdir, bashscript))
     qsubfile.write('\n')    
     
     # create qsub to generate bed file
