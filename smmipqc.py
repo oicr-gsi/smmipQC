@@ -303,7 +303,7 @@ def set_up_analysis(args):
     bashscript = os.path.join(qsubdir, 'Run_alignments.sh')
     align_job_name = 'align.{0}.{1}'.format(args.project, args.run) 
     newfile = open(bashscript, 'w')
-    newfile.write('module load smmipqc; sleep 60; smmipqc align -r {0} -pr {1} -w {2} -m {3}'.format(args.run, args.project, args.workingdir, args.max_jobs)) 
+    newfile.write('module load smmip-qc; sleep 60; smmipqc align -r {0} -pr {1} -w {2} -m {3}'.format(args.run, args.project, args.workingdir, args.max_jobs)) 
     newfile.close()
     qsubfile.write("qsub -P gsi -cwd -b y -N {0} -hold_jid \"{1}\" -l h_vmem=20g,h_rt={2}:0:0 -e {3} -o {3} \"bash {4}\"".format(align_job_name, qsub_job_name, args.align_run_time, logdir, bashscript))
     qsubfile.write('\n')
