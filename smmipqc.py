@@ -68,14 +68,9 @@ def generate_qsubs(args):
         assert len(fastq_files[i]) == 2
         assert 'R1' in fastq_files[i][0] and 'R2' in fastq_files[i][1]       
 
-    if args.panel == 'Myeloid_CML_smMIPS_panel':
-        panel = '/.mounts/labs/gsiprojects/gsi/smMIPS/panels/panels_MISO/Myeloid_CML_smMIPS_panel.txt'
-    elif args.panel == 'Myeloid_smMIPS_panel':
-        panel = '/.mounts/labs/gsiprojects/gsi/smMIPS/panels/panels_MISO/Myeloid_smMIPS_panel.txt'
-    elif args.panel == 'CB_Paired_B_ALL_smMIPS_panel':
-        panel = '/.mounts/labs/gsiprojects/gsi/smMIPS/panels/panels_MISO/CB_Paired_B_ALL_smMIPS_panel.txt'  
-
-    
+    if os.path.isfile(args.panel) == False:
+        raise ValueError("Invalid panel path. {0}".format(args.panel))
+        
     bwa='/.mounts/labs/gsi/modulator/sw/Debian8.11/bwa-0.7.12/bin/bwa'
     reference='/.mounts/labs/gsi/modulator/sw/data/hg19-bwa-index-0.7.12/hg19_random.fa'
 
@@ -118,7 +113,7 @@ def generate_qsubs(args):
             fastq2 = fastq_files[sample][1]
             outdir = os.path.join(analysisdir, sample)
             sortedbam = os.path.join(WorkingDir, 'smmips_analysis/{0}/out/{0}.sorted.bam'.format(sample))
-            mycmd = assign_cmd.format(panel, outdir, region, sortedbam, sample, qsubscript, donedir) 
+            mycmd = assign_cmd.format(args.panel, outdir, region, sortedbam, sample, qsubscript, donedir) 
             newfile.write(mycmd)
             newfile.close()
             # create a qsub script
@@ -278,13 +273,11 @@ def set_up_analysis(args):
     # create qsub to generate bed file
     bashscript = os.path.join(qsubdir, 'Create_regions_bed.sh')
     newfile = open(bashscript, 'w')
-    if args.panel == 'Myeloid_CML_smMIPS_panel':
-        panel = '/.mounts/labs/gsiprojects/gsi/smMIPS/panels/panels_MISO/Myeloid_CML_smMIPS_panel.txt'
-    elif args.panel == 'Myeloid_smMIPS_panel':
-        panel = '/.mounts/labs/gsiprojects/gsi/smMIPS/panels/panels_MISO/Myeloid_smMIPS_panel.txt'
-    elif args.panel == 'CB_Paired_B_ALL_smMIPS_panel':
-        panel = '/.mounts/labs/gsiprojects/gsi/smMIPS/panels/panels_MISO/CB_Paired_B_ALL_smMIPS_panel.txt'  
-    newfile.write('module load smmip-region-finder; smmipRegionFinder -d 500 -p {0} -o {1}'.format(panel, WorkingDir))
+    
+    if os.path.isfile(args.panel) == False:
+        raise ValueError("Invalid panel path. {0}".format(args.panel))
+    
+    newfile.write('module load smmip-region-finder; smmipRegionFinder -d 500 -p {0} -o {1}'.format(args.panel, WorkingDir))
     newfile.close()
     bed_job_name = 'regions.{0}.{1}'.format(args.project, args.run)
     qsubfile.write("qsub -P gsi -cwd -b y -N {0}  -hold_jid \"{1}\" -l h_vmem=20g,h_rt=5:0:0 -e {2} -o {2} \"bash {3}\"".format(bed_job_name, link_job_name, logdir, bashscript))
@@ -347,8 +340,10 @@ if __name__ == '__main__':
     q_parser.add_argument('-r', '--run', dest='run', help='Run id', required=True)
     q_parser.add_argument('-pr', '--project', dest='project', help='Project name as it appears in File Provenance Report.', required=True)
     q_parser.add_argument('-w', '--workingdir', dest='workingdir', help='Path to working directory', required=True)
-    q_parser.add_argument('-p', '--panel', dest='panel', choices = ['Myeloid_CML_smMIPS_panel', 'Myeloid_smMIPS_panel', 'CB_Paired_B_ALL_smMIPS_panel'],
-                          help='Smmip panel. Valid panels are: Myeloid_CML_smMIPS_panel, Myeloid_smMIPS_panel or CB_Paired_B_ALL_smMIPS_panel', required=True)
+    q_parser.add_argument('-p', '--panel', dest='panel', help='Smmip panel. Panels are:\
+                          /.mounts/labs/gsiprojects/gsi/smmips/smmips_panels/panels/panels_MISO/Myeloid_smMIPS_panel.txt,\
+                          /.mounts/labs/gsiprojects/gsi/smmips/smmips_panels/panels/panels_MISO/Myeloid_CML_smMIPS_panel.txt,\
+                          /.mounts/labs/gsiprojects/gsi/smmips/smmips_panels/panels/panels_MISO/CB_Paired_B_ALL_smMIPS_panel.txt', required = True)
     q_parser.set_defaults(func=generate_qsubs)
 
 
@@ -383,10 +378,11 @@ if __name__ == '__main__':
     s_parser.add_argument('-r', '--run', dest='run', help='Run id', required=True)
     s_parser.add_argument('-pr', '--project', dest='project', help='Project name as it appears in File Provenance Report.', required=True)
     s_parser.add_argument('-w', '--workingdir', dest='workingdir', help='Path to working directory', required=True)
-    s_parser.add_argument('-p', '--panel', dest='panel', choices = ['Myeloid_CML_smMIPS_panel', 'Myeloid_smMIPS_panel', 'CB_Paired_B_ALL_smMIPS_panel'],
-                          help='Smmip panel. Valid panels are: Myeloid_CML_smMIPS_panel, Myeloid_smMIPS_panel or CB_Paired_B_ALL_smMIPS_panel', required=True)
+    s_parser.add_argument('-p', '--panel', dest='panel', help='Smmip panel. Panels are:\
+                          /.mounts/labs/gsiprojects/gsi/smmips/smmips_panels/panels/panels_MISO/Myeloid_smMIPS_panel.txt,\
+                          /.mounts/labs/gsiprojects/gsi/smmips/smmips_panels/panels/panels_MISO/Myeloid_CML_smMIPS_panel.txt,\
+                          /.mounts/labs/gsiprojects/gsi/smmips/smmips_panels/panels/panels_MISO/CB_Paired_B_ALL_smMIPS_panel.txt', required = True)
     s_parser.add_argument('-m', '--maxjobs', dest='max_jobs', default=150, help='Maximum number of jobs running in parallel')
-    
     s_parser.add_argument('-art', '--align_run_time', dest='align_run_time', default=5, help='Run time in hours for aligning reads. Default is 5 hours')
     s_parser.add_argument('-qrt', '--qc_run_time', dest='qc_run_time', default=10, help='Run time in hours for performing QC. Default is 10 hours')
     s_parser.set_defaults(func=set_up_analysis)
