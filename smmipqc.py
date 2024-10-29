@@ -9,8 +9,196 @@ Created on Mon Jun 19 13:06:39 2023
 import os
 import subprocess
 import argparse
+import gzip
+import json
+from itertools import zip_longest
 
 
+
+
+def group_fastqs(fastqs):
+    '''
+    (list) -> list
+    
+    Returns a list of lists of paired fastqs
+    
+    parameters
+    ----------
+    - fastqs (list): List of paired fastqs files
+    '''
+    
+    fastqs = sorted(list(fastqs))
+    
+    L = []
+    for i in range(0, len(fastqs), 2):
+        L.append([fastqs[i], fastqs[i+1]])
+    return L
+    
+
+
+def getread(fastq_file):
+    """
+    (file) -- > itertools.zip_longest
+    :param fastq_file: a fastq file open for reading in plain text mode
+    
+    Returns an iterator slicing the fastq into 4-line reads.
+    Each element of the iterator is a tuple containing read information
+    """
+    args = [iter(fastq_file)] * 4
+    return zip_longest(*args, fillvalue=None)
+
+
+
+def downsize_fastqs(r1_file, r2_file, outdir, max_reads):
+    """
+    (str, str, str, int) -> None
+       
+    Write new fastqs pairs in outdir keeping the top max_reads in each new file 
+    Pre-condition: fastqs are paired, have the same number of reads and files are in sync
+        
+    Parameters
+    ----------
+    - r1_file (str): Path to fastq R1
+    - r2_file (str): Path to fastq R2
+    - outdir (str): Output directory
+    - max_reads (int): Maximum number of reads to keep from each fastq
+    """
+    
+    # Read FASTQ in text mode
+    r1 = gzip.open(r1_file, "rt")
+    r2 = gzip.open(r2_file, "rt")
+    
+    # Open output fastqs in text mode for writing re-headered reads
+    r1_writer = gzip.open(os.path.join(outdir, os.path.basename(r1_file)), "wt")
+    r2_writer = gzip.open(os.path.join(outdir, os.path.basename(r2_file)), "wt")
+    
+    # make a list of fastqs open for reading
+    fastqs = [r1, r2]
+    
+    # make a list of files open for writing
+    writers = [r1_writer, r2_writer]
+
+    # create iterator with reads from each file
+    I =  zip(getread(fastqs[0]), getread(fastqs[1]))
+    
+    # count all reads
+    total = 0
+    
+    # loop over iterator with slices of 4 read lines from each line
+    for reads in I:
+        # extract reads if the maximum number of reads is not reached
+        if total <= max_reads:
+            for i in range(len(writers)):
+                # write new fastqs
+                for j in range(len(reads[i])):
+                    writers[i].write(reads[i][j])
+            # update counter
+            total += 1
+                
+    # close all open files
+    for i in writers:
+        i.close()
+    for i in fastqs:
+        i.close()
+       
+    print("Complete. Output written to {0}".format(outdir))
+    
+    
+
+
+def compute_average_reads(fastqs):
+    '''
+    (dict) -> float
+    
+    Returns the average number of reads across all fastq files
+    
+    Parameters
+    ----------
+    - fastqs (dict): Dictionary of read counts across all fastq files
+    '''
+
+    total = 0
+    for i in fastqs:
+        total += fastqs[i]
+    average = total / len(fastqs)
+    return average
+
+
+def compute_max_reads(average, downsize):
+    '''
+    (float, int) -> int
+    
+    Returns the maximum number of reads of each fastq files by reducing the 
+    average number of reads by a factor of downsize %
+    
+    Parameters
+    ----------
+    - average (float): Average number of reads across all samples
+    - downsize (int): Downsizing factor, in percent
+    '''
+       
+    cap = average * downsize / 100
+    return int(cap)
+
+
+
+def link_files(targetdir, fastqs):
+    '''
+    (str, list) -> None
+    
+    Link the fastqs files to the target directory
+    
+    Parameters
+    ----------
+    - targetdir (str): Directory where the fastas are linked
+    - fastqs (list): List of fastqs files
+    '''
+
+    for file in fastqs:
+        assert os.path.isfile(file)
+        filename = os.path.basename(file)
+        link = os.path.join(targetdir, filename)
+        if os.path.isfile(link) == False:
+           os.symlink(file, link)
+
+
+
+def extract_fastqs(project, run, fpr):
+    '''
+    (str, str, str) -> dict
+    
+    Returns a dictionary of file paths and associated read counts
+    
+    Parameters
+    ----------
+    - project (str): Name opf project of interest
+    - run (str): Run identifier
+    - fpr (str): Path to the File Provenance Reporter
+    '''
+    
+    # open fpr, grab fastqs for the given run, and extract read counts
+    counts = {}
+    infile = gzip.open(fpr, 'rt', errors='ignore')
+    for line in infile:
+        if args.run in line:
+            line = line.rstrip().split('\t')
+            if line[1] == project or line[1] == 'GLCS':
+                workflow = line[30]
+                if workflow.lower() in ['casava', 'bcl2fastq', 'fileimportforanalysis', 'fileimport']:
+                    # keep sequences of the correct run
+                    if run == line[18]:
+                        file_path = line[46]
+                        read_count = line[45]
+                        if read_count:
+                            read_count = {k.split('=')[0]:k.split('=')[1] for k in read_count.split(';')}
+                        if 'read_count' in read_count:
+                            read_count = int(read_count['read_count'])
+                        else:
+                            read_count = -1
+                        counts[file_path] = read_count
+    infile.close()           
+
+    return counts
 
 
 def link_fastqs(args):
@@ -19,22 +207,58 @@ def link_fastqs(args):
     # get working directory
     WorkingDir = os.path.join(args.workingdir, '{0}_{1}'.format(args.run, args.project))
 
-    # make a list of fastqs
-    run_fastqs = subprocess.check_output('zcat {0} | grep bcl2fastq | grep {1} | cut -f 47'.format(args.fpr, args.run), shell=True).decode('utf-8').rstrip().split('\n')
-    fastqs = [i for i in run_fastqs if args.project in i or 'GLCS' in i]
+    # exctract fastqs and their read counts 
+    counts = extract_fastqs(args.project, args.run, args.fpr)
+    
+    fastqs = sorted(list(counts.keys()))
     print('extracted {0} fastqs from FPR'.format(len(fastqs)))
-     
-    targetdir = os.path.join(WorkingDir, 'fastqs')
-    os.makedirs(targetdir, exist_ok=True)
 
-    for file in fastqs:
-        assert os.path.isfile(file)
-        filename = os.path.basename(file)
-        link = os.path.join(targetdir, filename)
-        if os.path.isfile(link) == False:
-            os.symlink(file, link)
+    # create target directory
+    if args.downsize:
+        # downsize the fastqs and keep a percent of the average number of reads
+        # across samples
+        try:
+            int(args.downsize)
+        except:
+            raise ValueError('the downsize factor should be an integer')
+        # compute the mean number of reads across samples
+        average = compute_average_reads(counts)
+        # compute the maximum number of reads
+        max_reads = compute_max_reads(average, int(args.downsize))
+        # group all the paired fastqs
+        paired_fastqs = group_fastqs(fastqs)
+        # downsize by keeping the top max reads from each file
+        outdir = os.path.join(WorkingDir, 'fastqs')
+        os.makedirs(outdir, exist_ok=True)
+        for pair in paired_fastqs:
+            r1_file, r2_file = pair
+            downsize_fastqs(r1_file, r2_file, outdir, max_reads)
+    else:
+        # link the original fastqs 
+        targetdir = os.path.join(WorkingDir, 'fastqs')
+        os.makedirs(targetdir, exist_ok=True)
+        link_files(targetdir, fastqs)
 
-       
+    # write json with read counts
+    count_file = os.path.join(WorkingDir, '{0}.{1}.read_counts.json'.format(args.project, args.run))
+    newfile = open(count_file, 'w')
+    json.dump(counts, newfile)
+    newfile.close()
+    
+    
+    # write file with downsizing factor, max reads to include on the report
+    if args.downsize:
+        outputfile = os.path.join(WorkingDir, '{0}.{1}.downsize_summary.txt'.format(args.project, args.run))
+        newfile = open(outputfile, 'w')
+        summary = 'The mean number of reads across samples ({0}) has been reduced by {1}%.'.format(round(average, 3), args.downsize)
+        summary = summary + ' ' + 'Only the top {0} reads have been kept for each sample\n'.format(max_reads)
+        newfile.write(summary)
+        newfile.close()
+    
+    
+    
+    
+    
 
 def generate_qsubs(args):
     
@@ -333,6 +557,7 @@ if __name__ == '__main__':
     l_parser.add_argument('-r', '--run', dest='run', help='Run id', required=True)
     l_parser.add_argument('-pr', '--project', dest='project', help='Project name as it appears in File Provenance Report.', required=True)
     l_parser.add_argument('-w', '--workingdir', dest='workingdir', help='Path to working directory', required=True)
+    l_parser.add_argument('-d', '--downsize', dest='downsize', help='Reduce the number of reads by a percent of the average number of reads across samples')
     l_parser.set_defaults(func=link_fastqs)
     
     # generate qsubs 
