@@ -250,8 +250,9 @@ def link_fastqs(args):
     if args.downsize:
         outputfile = os.path.join(WorkingDir, '{0}.{1}.downsize_summary.txt'.format(args.project, args.run))
         newfile = open(outputfile, 'w')
-        newfile.write('The mean number of reads across samples, {0}, has been reduced by {1}%.\n'.format(round(average, 3), args.downsize))
-        newfile.write('Only the top {0} reads have been kept for each sample.\n'.format(max_reads))
+        summary = 'The mean number of reads across samples ({0}) has been reduced by {1}%.'.format(round(average, 3), args.downsize)
+        summary = summary + ' ' + 'Only the top {0} reads have been kept for each sample\n'.format(max_reads)
+        newfile.write(summary)
         newfile.close()
     
     
