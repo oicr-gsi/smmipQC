@@ -610,6 +610,7 @@ if __name__ == '__main__':
     s_parser.add_argument('-m', '--maxjobs', dest='max_jobs', default=150, help='Maximum number of jobs running in parallel')
     s_parser.add_argument('-art', '--align_run_time', dest='align_run_time', default=5, help='Run time in hours for aligning reads. Default is 5 hours')
     s_parser.add_argument('-qrt', '--qc_run_time', dest='qc_run_time', default=10, help='Run time in hours for performing QC. Default is 10 hours')
+    s_parser.add_argument('-d', '--downsize', dest='downsize', help='Reduce the number of reads by a percent of the average number of reads across samples')
     s_parser.set_defaults(func=set_up_analysis)
     
     # get arguments from the command line
