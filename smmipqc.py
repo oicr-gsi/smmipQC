@@ -218,7 +218,7 @@ def write_downsized_fastqs(args):
     - max_reads (int): Maximum number of reads to keep in r1_file and r2_file
     '''
 
-    downsize_fastqs(args.r1_file, args.r2_file, args.outdir, args.max_reads)
+    downsize_fastqs(args.r1_file, args.r2_file, args.outdir, int(args.max_reads))
     
 
 def link_fastqs(args):
@@ -258,7 +258,7 @@ def link_fastqs(args):
         outdir = os.path.join(WorkingDir, 'fastqs')
         os.makedirs(outdir, exist_ok=True)
         # write qsubs to parallelize writing new fastas
-        downsize_cmd = 'smmipsqc downsize -f1 {0} -f2 {1} -o {2} -m {3}' 
+        downsize_cmd = 'smmipqc downsize -r1 {0} -r2 {1} -o {2} -mr {3}' 
         for pair in paired_fastqs:
             r1_file, r2_file = pair
             # get sample name
