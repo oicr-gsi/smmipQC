@@ -201,6 +201,26 @@ def extract_fastqs(project, run, fpr):
     return counts
 
 
+
+
+def write_downsized_fastqs(args):
+    '''
+    (str, str, str, int) -> None
+
+    Downsize a pair of fastqs r1_file and r2_file and write new fastqs to outdir
+    keeping only the top nax reads
+    
+    Parameters
+    ----------
+    - r1_file (str): Path to the fastq read 1
+    - r2_file (str): Path to the fastq read 2
+    - outdir (str): Path to the output directory where new fastqs are written
+    - max_reads (int): Maximum number of reads to keep in r1_file and r2_file
+    '''
+
+    downsize_fastqs(args.r1_file, args.r2_file, args.outdir, args.max_reads)
+    
+
 def link_fastqs(args):
     
     
@@ -221,6 +241,13 @@ def link_fastqs(args):
             int(args.downsize)
         except:
             raise ValueError('the downsize factor should be an integer')
+        
+        # set up qsub directory
+        qsubdir = os.path.join(WorkingDir, 'qsubs')
+        logdir = os.path.join(qsubdir, 'logs')
+        os.makedirs(qsubdir, exist_ok=True)
+        os.makedirs(logdir, exist_ok=True)
+
         # compute the mean number of reads across samples
         average = compute_average_reads(counts)
         # compute the maximum number of reads
@@ -230,9 +257,36 @@ def link_fastqs(args):
         # downsize by keeping the top max reads from each file
         outdir = os.path.join(WorkingDir, 'fastqs')
         os.makedirs(outdir, exist_ok=True)
+        # write qsubs to parallelize writing new fastas
+        downsize_cmd = 'smmipsqc downsize -f1 {0} -f2 {1} -o {2} -m {3}' 
         for pair in paired_fastqs:
             r1_file, r2_file = pair
-            downsize_fastqs(r1_file, r2_file, outdir, max_reads)
+            # get sample name
+            sample = os.path.basename(r1_file)
+            sample = sample[:sample.index('_' + args.run)]
+            BashScript = os.path.join(qsubdir, sample + '.downsize.sh')
+            newfile = open(BashScript, 'w')
+            mycmd = downsize_cmd.format(r1_file, r2_file, outdir, max_reads)
+            newfile.write(mycmd)
+            newfile.close()
+            # create a qsub script
+            qsubscript = os.path.join(qsubdir, sample + '.downsize.qsub')
+            newfile = open(qsubscript, 'w')
+            newfile.write('qsub -P gsi -b y -N {0}.smmipQC.downsize.{1} -l h_vmem=30g,h_rt=5:0:0 -e {2} -o {2} \"bash {3}\"'.format(sample, args.run, logdir, BashScript))
+            newfile.close()
+        
+        # make a list of qsubs scripts
+        qsubs = [os.path.join(qsubdir, i) for i in os.listdir(qsubdir) if 'downsize.qsub' in i]
+        while len(qsubs) != 0:
+            running_jobs = int(subprocess.check_output('qstat | wc -l', shell=True).decode('utf-8').rstrip())
+            if running_jobs < int(args.max_jobs):
+                jobs_to_submit = int(args.max_jobs) - running_jobs
+                if jobs_to_submit > 0:
+                    current_qsubs = qsubs[:jobs_to_submit]
+                    for i in current_qsubs:
+                        job = subprocess.call('bash {0}'.format(i), shell=True)
+                        qsubs.remove(i)
+
     else:
         # link the original fastqs 
         targetdir = os.path.join(WorkingDir, 'fastqs')
@@ -496,7 +550,7 @@ def set_up_analysis(args):
             int(args.downsize)
         except:
             raise ValueError('the downsize factor should be an integer')
-        mycmd = 'module load smmip-qc; sleep 60; smmipqc link -fpr {0} -r {1} -pr {2} -w {3} -d {4}'.format(args.fpr, args.run, args.project, args.workingdir, args.downsize) 
+        mycmd = 'module load smmip-qc; sleep 60; smmipqc link -fpr {0} -r {1} -pr {2} -w {3} -d {4} -m {5}'.format(args.fpr, args.run, args.project, args.workingdir, args.downsize, args.max_jobs) 
     else:
         mycmd = 'module load smmip-qc; sleep 60; smmipqc link -fpr {0} -r {1} -pr {2} -w {3}'.format(args.fpr, args.run, args.project, args.workingdir) 
     newfile.write(mycmd)
@@ -562,6 +616,14 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog = 'smmipqc.py', description='A tool to set up manual analyses of smmip QC')
     subparsers = parser.add_subparsers(help='sub-command help', dest='subparser_name')
     
+    # link files in gsi space 
+    d_parser = subparsers.add_parser('downsize', help="Generate new fastqs keeping the top reads")
+    d_parser.add_argument('-r1', '--read1', dest='r1_file', help='Path to the fastq read 1', required=True)
+    d_parser.add_argument('-r2', '--read2', dest='r2_file', help='Path to the fastq read 2', required=True)
+    d_parser.add_argument('-o', '--outdir', dest='outdir', help='Path to the directory where fastqs are written', required=True)
+    d_parser.add_argument('-mr', '--maxreads', dest='max_reads', help='Number of reads kept in the new fastqs', required=True)
+    d_parser.set_defaults(func=write_downsized_fastqs)
+        
    	# link files in gsi space 
     l_parser = subparsers.add_parser('link', help="Link fastq files to workfing directory")
     l_parser.add_argument('-fpr', '--provenance', dest='fpr', default='/scratch2/groups/gsi/production/vidarr/vidarr_files_report_latest.tsv.gz', help='Path to File Provenance Report. Default is /scratch2/groups/gsi/production/vidarr/vidarr_files_report_latest.tsv.gz')
@@ -569,6 +631,7 @@ if __name__ == '__main__':
     l_parser.add_argument('-pr', '--project', dest='project', help='Project name as it appears in File Provenance Report.', required=True)
     l_parser.add_argument('-w', '--workingdir', dest='workingdir', help='Path to working directory', required=True)
     l_parser.add_argument('-d', '--downsize', dest='downsize', help='Reduce the number of reads by a percent of the average number of reads across samples')
+    l_parser.add_argument('-m', '--maxjobs', dest='max_jobs', default=150, help='Maximum number of jobs running in parallel')
     l_parser.set_defaults(func=link_fastqs)
     
     # generate qsubs 
