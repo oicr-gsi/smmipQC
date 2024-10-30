@@ -487,7 +487,18 @@ def set_up_analysis(args):
     # create qsub to link fastqs
     bashscript = os.path.join(qsubdir, '{0}_{1}_link_fastqs.sh'.format(args.project, args.run))
     newfile = open(bashscript, 'w')
-    mycmd = 'module load smmip-qc; sleep 60; smmipqc link -fpr {0} -r {1} -pr {2} -w {3}'.format(args.fpr, args.run, args.project, args.workingdir) 
+    
+    # create target directory
+    if args.downsize:
+        # downsize the fastqs and keep a percent of the average number of reads
+        # across samples
+        try:
+            int(args.downsize)
+        except:
+            raise ValueError('the downsize factor should be an integer')
+        mycmd = 'module load smmip-qc; sleep 60; smmipqc link -fpr {0} -r {1} -pr {2} -w {3} -d {4}'.format(args.fpr, args.run, args.project, args.workingdir, args.downsize) 
+    else:
+        mycmd = 'module load smmip-qc; sleep 60; smmipqc link -fpr {0} -r {1} -pr {2} -w {3}'.format(args.fpr, args.run, args.project, args.workingdir) 
     newfile.write(mycmd)
     newfile.close()
     link_job_name = 'link.{0}.{1}'.format(args.project, args.run)
