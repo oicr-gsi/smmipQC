@@ -184,7 +184,7 @@ def extract_fastqs(project, run, fpr):
             line = line.rstrip().split('\t')
             if line[1] == project or line[1] == 'GLCS':
                 workflow = line[30]
-                if workflow.lower() in ['casava', 'bcl2fastq', 'fileimportforanalysis', 'fileimport']:
+                if workflow.lower() in ['casava', 'bcl2fastq', 'fileimportforanalysis', 'fileimport', 'import_fastq']:
                     # keep sequences of the correct run
                     if run == line[18]:
                         file_path = line[46]
@@ -258,7 +258,7 @@ def link_fastqs(args):
         outdir = os.path.join(WorkingDir, 'fastqs')
         os.makedirs(outdir, exist_ok=True)
         # write qsubs to parallelize writing new fastas
-        downsize_cmd = 'smmipqc downsize -r1 {0} -r2 {1} -o {2} -mr {3}' 
+        downsize_cmd = 'module load smmip-qc; smmipqc downsize -r1 {0} -r2 {1} -o {2} -mr {3}' 
         for pair in paired_fastqs:
             r1_file, r2_file = pair
             # get sample name
