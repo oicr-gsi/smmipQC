@@ -349,8 +349,11 @@ def generate_qsubs(args):
     if os.path.isfile(args.panel) == False:
         raise ValueError("Invalid panel path. {0}".format(args.panel))
         
-    bwa='/.mounts/labs/gsi/modulator/sw/Debian8.11/bwa-0.7.12/bin/bwa'
-    reference='/.mounts/labs/gsi/modulator/sw/data/hg19-bwa-index-0.7.12/hg19_random.fa'
+    # bwa='/.mounts/labs/gsi/modulator/sw/Debian8.11/bwa-0.7.12/bin/bwa'
+    # reference='/.mounts/labs/gsi/modulator/sw/data/hg19-bwa-index-0.7.12/hg19_random.fa'
+
+    bwa='/.mounts/labs/gsi/modulator/sw/Ubuntu20.04/bwa-0.7.12/bin/bwa'
+    reference='/.mounts/labs/gsi/modulator/sw/data/hg38-bwa-index-0.7.12/hg38_random.fa'
 
     # write qsubs for aligning fastqs
     align_cmd = 'module load smmips/1.0.9; smmips align -f1 {0} -f2 {1} -o {2} -r {3} -bwa {4} -pf {5}' 
